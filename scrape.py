@@ -1,10 +1,16 @@
 """Reddit citation scraper."""
+# Requires: reddit API secret and id
 # Usage:
 # python scrape.py -s seeeccrrettt -i iiiidddddd -r Nootropics
 
 import praw
 import re
 import argparse
+import json
+import requests
+import random
+
+translator_endpoint = 'http://127.0.0.1:1969/web'
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-s", "--secret",
@@ -38,17 +44,26 @@ reddit = praw.Reddit(user_agent='Extraction (by /u/BrainEnhance et. al.)',
 
 # Cause regex makes everything better
 # From: https://www.w3resource.com/python-exercises/re/python-re-exercise-42.php
-p = 'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+p1 = """\b((?:[a-z][\w-]+:(?:/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))"""
+p2 = """\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))"""
+p3 = r"""^((http[s]?|ftp):\/)?\/?([^:\/\s]+)((\/\w+)*\/)([\w\-\.]+[^#?\s]+)(.*)?(#[\w\-]+)?$"""
+p4 = r"""\bhttp[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\,]|(?:%[0-9a-fA-F][0-9a-fA-F]))+\b"""
+p = re.compile(p4)
 
-urls = []
+sess = str(random.randint(10000,99999))
 for submission in reddit.subreddit(args.subreddit).stream.submissions():
     text = submission.selftext
-    for u in re.findall(p, text):
-        if u is not []:
-            print(u)
-#            urls.append(u)
-
-#    submission.comments.replace_more(limit=None)
-#    for comment in submission.comments.list():
-#        print(comment.date)
-#        print(comment.body)
+    submission.comments.replace_more(limit=None)
+    for com in submission.comments.list():
+        text += com.body
+#    with open('output.txt', 'a') as outfile:
+#        outfile.write(text)
+    for u in re.finditer(p, text):
+            j = json.dumps({
+                'url': u.group(),
+                'sessionid': sess
+            })
+            h = {'Content-Type': 'application/json'}
+            print(u.group())
+#            r = requests.post(url=translator_endpoint, headers=h, data=j)
+#            print(r.text)
