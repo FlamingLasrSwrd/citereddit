@@ -5,7 +5,9 @@ Creating a reference database from citations made on reddit.
 # Intro
 
 Many subreddits revolve around academic citations. [/r/Nootropics/][], [/r/DrugNerds/][], [/r/FoodNerds/][] are among my favorite sources for new science. Unfortunately, these academic reddits consist of a loose collection of urls. They lack the sharability of a bibliographic database.
+
 I propose creating a research database through a popular reference manager like Zotero or Mendeley. We could, of course, do this manually, but ain't nobody got time for that. Scraping for citations automatically sounds like a better option.
+
 The [announcement post][] on reddit explains the impetus and initial planning comments.
 
 # Process
