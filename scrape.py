@@ -9,8 +9,9 @@ import argparse
 import json
 import requests
 import random
+from pprint import pprint
 
-translator_endpoint = 'http://127.0.0.1:1969/web'
+translator_endpoint = 'http://127.0.0.1:1969/'
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-s", "--secret",
@@ -51,19 +52,24 @@ p4 = r"""\bhttp[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\,]|(?:%[0-9a-fA-F][0-9a-f
 p = re.compile(p4)
 
 sess = str(random.randint(10000,99999))
-for submission in reddit.subreddit(args.subreddit).stream.submissions():
-    text = submission.selftext
-    submission.comments.replace_more(limit=None)
-    for com in submission.comments.list():
-        text += com.body
-#    with open('output.txt', 'a') as outfile:
-#        outfile.write(text)
-    for u in re.finditer(p, text):
-            j = json.dumps({
-                'url': u.group(),
-                'sessionid': sess
-            })
-            h = {'Content-Type': 'application/json'}
-            print(u.group())
-#            r = requests.post(url=translator_endpoint, headers=h, data=j)
-#            print(r.text)
+with open('output.bib', 'w') as outfile:
+    for submission in reddit.subreddit(args.subreddit).stream.submissions():
+        text = submission.selftext
+        submission.comments.replace_more(limit=None)
+        for com in submission.comments.list():
+            text += com.body
+        for u in re.finditer(p, text):
+                print(u.group())
+                j = json.dumps({'url': u.group(), 'sessionid': sess})
+                h = {'Content-Type': 'application/json'}
+                # Get zotero API format json doc
+                r = requests.post(url=translator_endpoint+'web', headers=h, data=j)
+                if r.text.find('No translators available') is not -1:
+                    break
+                if r.text.find('@misc') is not -1:
+                    break #TODO: @misc still doesn't work
+                data = r.text.encode(encoding='utf-8')
+                r = requests.post(url=translator_endpoint+'export', headers=h, data=data, params={'format': 'bibtex'})
+                if r.text.find('Invalid JSON provided') is not -1:
+                    break
+                outfile.write(r.text)
