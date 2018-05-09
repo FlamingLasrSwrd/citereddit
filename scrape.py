@@ -10,16 +10,32 @@ import json
 import requests
 import random
 import logging
+import logging.handlers
 import pprint
-from datetime import date
+import datetime
 
 # Filenames
 URL_OUT = 'urls.txt'
 BIB_OUT = 'library.bib'
-RAW_OUT = 'raw.txt'
+
+# Version
+version = '1.1'
 
 translator_endpoint = 'http://127.0.0.1:1969/'
 # TODO: Exception for translator_endpoint unavailable: or start server automatically?
+def test_translator():
+    """Test Zotero translation server with simple web lookup."""
+    j = json.dumps({
+        'url': 'http://www.tandfonline.com/doi/abs/10.1080/15424060903167229',
+        'sessionid': 'abc123'})
+    h = {'Content-Type': 'application/json'}
+    r = requests.post(url=translator_endpoint+'web',
+                      headers=h,
+                      data=j)
+    if r.status_code == 200:
+        return True
+    return False
+
 # TODO: move argparse to external source
 parser = argparse.ArgumentParser()
 parser.add_argument("-s", "--secret",
@@ -45,22 +61,39 @@ parser.add_argument("-r", "--subreddit",
 
 args = parser.parse_args()
 
-# TODO: move logging to external source
-#logging.basicConfig(level=logging.INFO)
-logging.basicConfig(level=logging.DEBUG)
-#logging.basicConfig(filename='log.log', filemode='w', level=logging.DEBUG)
+logfile = __name__.strip('_')+'.log'
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+ch = logging.StreamHandler()
+format_long = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+format_short = logging.Formatter('%(levelname)s - %(message)s')
+ch.setFormatter(format_short)
+ch.setLevel(logging.INFO)
+#fh = logging.handlers.RotatingFileHandler(logfile, maxBytes=1024, backupCount=10)
+fh = logging.FileHandler(logfile)
+fh.setFormatter(format_long)
+fh.setLevel(logging.DEBUG)
+logger.addHandler(ch)
+logger.addHandler(fh)
 
 # Could raise OAuth exception: handle?
-reddit = praw.Reddit(user_agent='python/requests:citereddit:1.0 (by /u/brainenhance)',
+reddit = praw.Reddit(user_agent=f'python/requests:citereddit:{version} (by /u/brainenhance)',
                     client_id=args.id,
                     client_secret=args.secret,
                     username=args.username,
                     password=args.password,
                     skip_existing=True)
-if args.username:
-    logging.info(f'Reddit API authenticated as {reddit.user.me()}')
-else:
-    logging.info(f'Reddit API authenticated anonymously.')
+# Setup info:
+_info = {
+    'Description': __doc__,
+    'Reddit API authenticated as ': reddit.user.me(),
+    'Scanning subreddit: ': args.subreddit,
+    'URLs exported to ': URL_OUT,
+    'Library exported to ': BIB_OUT,
+    'Logfile located at ': logfile,
+    'Scraping started at ': datetime.datetime.now().isoformat()}
+logger.info('Startup Info: \n'+pprint.pformat(_info))
+
 # Cause regex makes everything better
 # Another option would be to convert submissions to html and
 # use html_parser (BS4?) to locate <a> tags
@@ -75,66 +108,82 @@ submission_count = 0
 url_count = 0
 bib_count = 0
 sess = str(random.randint(10000,99999))
-with open(URL_OUT, 'w') as url_outfile, \
-     open(BIB_OUT, 'w') as bib_outfile, \
-     open(RAW_OUT, 'w') as raw_outfile:
+with open(URL_OUT, 'w') as url_outfile, open(BIB_OUT, 'w') as bib_outfile:
 # TODO: Open files as needed?
 # TODO: Add duplicate bib checker via https://github.com/perrette/papers?
 # TODO: Feature: pdf file download for free-text items
-
+    # Main loop:
+    # Iterate through subreddit submissions + comments and search for urls
+    # Filter out common urls and poor references
+    # Request bibliographic data from Zotero translation server
+    # Add bibtex style reference to output file
     for submission in reddit.subreddit(args.subreddit).stream.submissions(limit=None):
-        logging.info(f'Scanning {submission.title}')
+        logger.info(f'Scanning "{submission.title}"')
         submission_count += 1
         if submission_count % 10 == 0:
-            logging.info(f'Processed so far: Submissions-{submission_count}; Urls- {url_count}; Bib records- {bib_count}')
-            logging.debug(f'Authentication limits: {reddit.auth.limits}')
+            logger.info(f'Processed so far: Submissions-{submission_count}; Urls- {url_count}; Bib records- {bib_count}')
+            logger.debug(f'Authentication limits: {reddit.auth.limits}')
 
         text = submission.selftext
         submission.comments.replace_more(limit=None)
         for com in submission.comments.list():
             text += '\n' + com.body
-        logging.debug(f'Submission Full Text: \n{text}')
+        logger.debug(f'Submission Full Text: \n"{text}"')
         for u in re.finditer(p, text):
-            # skip common links
-# TODO: this could skip legitimate links with 'amazon' in the title: regex for domains only?
-            common = ['amazon','wikipedia','ebay', 'google', 'reddit']
-            if any([c in u.group() for c in common]): # any can be slow: TODO?
-                logging.info(f'Found common url... skipping.')
-                continue
-            # URL is valid and probably a valid reference
-            logging.info(f'Found url: {u.group()}')
+            logger.info(f'Found url: <{u.group()}>')
             url_count += 1
             # Add to url file for possible later duplicate checking
-            url_outfile.write(u.group()+'\n')
+            url_outfile.write('\n' + u.group())
+            # skip common links
+# TODO: this could skip legitimate links with 'amazon' in the title: regex for domains only?
+            common = ['amazon','wikipedia','ebay',
+                      'google', 'reddit', 'longecity']
+            if any([c in u.group() for c in common]): # any can be slow: TODO?
+                logger.info('Common url... skipping.')
+                continue
             # Translate url to Zotero API format
             j = json.dumps({'url': u.group(), 'sessionid': sess})
             h = {'Content-Type': 'application/json'}
             r = requests.post(url=translator_endpoint+'web',
                               headers=h,
                               data=j)
+            # Sometimes web translator responds with an empty list
+            # even though url is valid reference. A second call sometimes works.
+            # seems to only occur with wiley items: could be broken translator
+            if r.text == '[]':
+                logger.warning(f'Unknown web translator error processing url: {u.group()}. Trying once more.')
+                r = requests.post(url=translator_endpoint+'web',
+                                  headers=h,
+                                  data=j)
+            if r.text == '[]':
+                logger.warning('Second attempt yielded no results... skipping.')
+                continue
+            logger.debug(f'Translator response: {r.text}')
             # Skip the current url if Zotero doesn't find a match
             if r.status_code is not 200:
-                logging.info(f'Web Translator Error: {r.text.strip()}')
+                logger.info(f'Web Translator Error: {r.text.strip()}')
                 continue
-# TODO: translation server doesn't always seem to work; build docker from src
+
             # r.text is now the bib info located by the translator in
             # Zotero API JSON format
-            #logging.debug(f'Web Translator Full Response: \n{r.text}')
+            #logger.debug(f'Web Translator Full Response: \n{r.text}')
             # manipulate web translator responses
             zot_bib = json.loads(r.text) # a json list of size 0
-            logging.debug(f'Web Translator Bib Item: \n{pprint.pformat(zot_bib)}')
+            logger.debug(f'Web Translator Bib Item: \n{pprint.pformat(zot_bib)}')
             # skip some unreliable items
             if zot_bib[0]['itemType'] in ['encyclopediaArticle',
                                           'blogPost',
                                           'webpage']:
-                logging.info('Unreliable source found... skipping.')
+                logger.info('Unreliable source... skipping.')
                 continue
-            if zot_bib[0]['creators'] is []:
-                logging.info('No author found... skipping.')
+            # skip items without metadata
+            if zot_bib[0]['creators'] == []:
+                logger.info('No author found... skipping.')
                 continue
             # accessDate on translation server doesn't seem to be working
 #            if zot_bib[0]['accessDate'] is 'CURRENT_TIMESTAMP':
-            zot_bib[0]['accessDate'] = date.today().isoformat()
+#            zot_bib[0]['accessDate'] = datetime.date.today().isoformat()
+# Fixed with latest version of translation server
             # convert back to json
             zot_bib_j = json.dumps(zot_bib)
             # sometimes authors' names are not utf-8
@@ -145,9 +194,11 @@ with open(URL_OUT, 'w') as url_outfile, \
                               data=data,
                               params={'format': 'bibtex'})
             if r.status_code is not 200:
-                logging.info(f'Export Translator Error: {r.text.strip()}')
+                logger.info(f'Export Translator Error: {r.text.strip()}')
                 break
             bib_outfile.write(r.text+'\n')
             bib_count += 1
 # TODO: log item identifier with success statement
-            logging.info('Item successfully added to library.')
+            logger.info('Item successfully added to library.')
+            url_outfile.write(' **(successful)**')
+# TODO: add log 'search completed without locating url'
