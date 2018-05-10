@@ -14,10 +14,6 @@ import logging.handlers
 import pprint
 import datetime
 
-# Filenames
-URL_OUT = 'urls.txt'
-BIB_OUT = 'library.bib'
-
 # Version
 version = '1.1'
 
@@ -61,7 +57,13 @@ parser.add_argument("-r", "--subreddit",
 
 args = parser.parse_args()
 
-logfile = __name__.strip('_')+'.log'
+file_prefix = args.subreddit + '_'
+
+# Filenames
+URL_OUT = file_prefix + 'urls.txt'
+BIB_OUT = file_prefix + 'library.bib'
+logfile = file_prefix +__name__.strip('_')+'.log'
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
@@ -69,7 +71,7 @@ format_long = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(mess
 format_short = logging.Formatter('%(levelname)s - %(message)s')
 ch.setFormatter(format_short)
 ch.setLevel(logging.INFO)
-#fh = logging.handlers.RotatingFileHandler(logfile, maxBytes=1024, backupCount=10)
+#fh = logging.handlers.RotatingFileHandler(logfile, maxBytes=1000000, backupCount=10)
 fh = logging.FileHandler(logfile)
 fh.setFormatter(format_long)
 fh.setLevel(logging.DEBUG)
@@ -77,6 +79,7 @@ logger.addHandler(ch)
 logger.addHandler(fh)
 
 # Could raise OAuth exception: handle?
+# reddit = _praw.reddit()
 reddit = praw.Reddit(user_agent=f'python/requests:citereddit:{version} (by /u/brainenhance)',
                     client_id=args.id,
                     client_secret=args.secret,
@@ -109,25 +112,30 @@ url_count = 0
 bib_count = 0
 sess = str(random.randint(10000,99999))
 with open(URL_OUT, 'w') as url_outfile, open(BIB_OUT, 'w') as bib_outfile:
-# TODO: Open files as needed?
-# TODO: Add duplicate bib checker via https://github.com/perrette/papers?
+# TODO: Feature: duplicate bib checker via https://github.com/perrette/papers?
 # TODO: Feature: pdf file download for free-text items
     # Main loop:
     # Iterate through subreddit submissions + comments and search for urls
     # Filter out common urls and poor references
     # Request bibliographic data from Zotero translation server
     # Add bibtex style reference to output file
+# TODO: still limited to 1000 submissions
     for submission in reddit.subreddit(args.subreddit).stream.submissions(limit=None):
         logger.info(f'Scanning "{submission.title}"')
         submission_count += 1
+        # Report the item counts every ten submissions processed
         if submission_count % 10 == 0:
             logger.info(f'Processed so far: Submissions-{submission_count}; Urls- {url_count}; Bib records- {bib_count}')
             logger.debug(f'Authentication limits: {reddit.auth.limits}')
-
-        text = submission.selftext
+        if submission.selftext_html is None:
+            text = submission.url + '\n'
+# TODO: use submission.selftext_html for easier regexing
+        else:
+            text = submission.selftext
         submission.comments.replace_more(limit=None)
         for com in submission.comments.list():
             text += '\n' + com.body
+# TODO: organize line spacing better: remove duplicate '\n'
         logger.debug(f'Submission Full Text: \n"{text}"')
         for u in re.finditer(p, text):
             logger.info(f'Found url: <{u.group()}>')
@@ -171,6 +179,7 @@ with open(URL_OUT, 'w') as url_outfile, open(BIB_OUT, 'w') as bib_outfile:
             zot_bib = json.loads(r.text) # a json list of size 0
             logger.debug(f'Web Translator Bib Item: \n{pprint.pformat(zot_bib)}')
             # skip some unreliable items
+# TODO: don't skip some webpages (e.g. .gov domains)
             if zot_bib[0]['itemType'] in ['encyclopediaArticle',
                                           'blogPost',
                                           'webpage']:
@@ -202,3 +211,10 @@ with open(URL_OUT, 'w') as url_outfile, open(BIB_OUT, 'w') as bib_outfile:
             logger.info('Item successfully added to library.')
             url_outfile.write(' **(successful)**')
 # TODO: add log 'search completed without locating url'
+
+if __name__ == '__main__':
+    # verify configuration
+    # verify translation server is running
+    # verify praw.Reddit instance is properly authenticated
+# TODO: iterate through list of subreddits?
+    pass
