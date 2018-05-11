@@ -38,6 +38,13 @@ Zotero offers annotation syncing with each reference. Mendeley has group editing
 
 Reddit is not the only informal source of citations. [Examine][] is a very reputable source in the world of supplements, boasting hundreds of thousands of citations. It is referenced often on these subreddits. Integration with their internal reference database (if they have one) would be mutually beneficial.
 
+
+*Donations appreciated*
+- BTC ```3M3K3YB1AwFG4kU1ssW4BUUJNyYTE2ueRg```
+- LTC ```MVYaKVyzzdjmWLKeaPTayVhkpErRrn6qQd```
+- ETH ```0x14F9eEF5FAeE331D5D7C352bBcdBa92E077E346d```
+- BCH ```qq3ruthwuzj5z2ng20ct2jsxevumpgs7fgzx7c5rgv```
+
 <!--links-->
 [/r/Nootropics/]: https://reddit.com/r/Nootropics
 [/r/DrugNerds/]: https://reddit.com/r/DrugNerds
