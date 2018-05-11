@@ -22,7 +22,15 @@ cd praw
 python setup.py install
 ```
 
+## Generating a Refresh Token
+
+Go to your [reddit apps page][] and create a new **web** app using **redirect_uri** ```http://localhost:8080```.
+
+![refresh_token][]
+
 
 <!--links-->
 [PRAW]: https://github.com/praw-dev/praw/
 [my fork]: https://github.com/ekdunn/praw.git
+[reddit apps page]: https://www.reddit.com/prefs/apps
+[refresh_token]: ekdunn.github.io/assets/img/refresh_token_app.png
