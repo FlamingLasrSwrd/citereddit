@@ -8,6 +8,18 @@ sudo docker run -p 1969:1969 -ti --rm translation-server
 ```
 
 ```bash
+git clone --recursive https://github.com/zotero/translation-server
+cd translation-server/modules/zotero/translators
+git pull origin master
+cd ..
+npm install && npm run build
+cd ../..
+./fetch_sdk
+./build.sh
+build/run_translation-server.sh
+```
+
+```bash
 sudo apt install docker.io
 sudo docker pull zotero/translation-server
 sudo docker run --rm -p 1969:1969 zotero/translation-server
