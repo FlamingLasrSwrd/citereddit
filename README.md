@@ -2,7 +2,8 @@
 
 Creating a reference database from citations made on reddit.
 
-**Database** is located at [citereddit Zotero Group][]
+**Database** is located at [citereddit Zotero Group][]  
+**Complete Bibtex File** is ```citereddit.bib```.
 
 # Intro
 
