@@ -19,6 +19,7 @@ version = '1.1'
 
 translator_endpoint = 'http://127.0.0.1:1969/'
 # TODO: Exception for translator_endpoint unavailable: or start server automatically?
+# TODO: Translator uses tons of RAM if left running in console.
 def test_translator():
     """Test Zotero translation server with simple web lookup."""
     j = json.dumps({
@@ -112,6 +113,7 @@ url_count = 0
 bib_count = 0
 sess = str(random.randint(10000,99999))
 with open(URL_OUT, 'w') as url_outfile, open(BIB_OUT, 'w') as bib_outfile:
+# TODO: Open/Close files as needed to reduce RAM usage
 # TODO: Feature: duplicate bib checker via https://github.com/perrette/papers?
 # TODO: Feature: pdf file download for free-text items
     # Main loop:
@@ -144,8 +146,8 @@ with open(URL_OUT, 'w') as url_outfile, open(BIB_OUT, 'w') as bib_outfile:
             url_outfile.write('\n' + u.group())
             # skip common links
 # TODO: this could skip legitimate links with 'amazon' in the title: regex for domains only?
-            common = ['amazon','wikipedia','ebay',
-                      'google', 'reddit', 'longecity']
+            common = ['amazon','wikipedia','ebay', 'github',
+                      'google', 'reddit', 'longecity', 'youtube']
             if any([c in u.group() for c in common]): # any can be slow: TODO?
                 logger.info('Common url... skipping.')
                 continue
