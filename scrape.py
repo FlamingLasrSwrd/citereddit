@@ -4,8 +4,6 @@
 # python scrape.py -s seeeccrrettt -i iiiidddddd -r Nootropics
 
 import praw
-import re
-import argparse
 import json
 import requests
 import random
@@ -13,9 +11,11 @@ import logging
 import logging.handlers
 import pprint
 import datetime
+from bs4 import BeautifulSoup
+from config import parser
 
 # Version
-version = '1.1'
+version = '1.2'
 
 translator_endpoint = 'http://127.0.0.1:1969/'
 # TODO: Exception for translator_endpoint unavailable: or start server automatically?
@@ -24,7 +24,7 @@ def test_translator():
     """Test Zotero translation server with simple web lookup."""
     j = json.dumps({
         'url': 'http://www.tandfonline.com/doi/abs/10.1080/15424060903167229',
-        'sessionid': 'abc123'})
+        'session': 'abc123'})
     h = {'Content-Type': 'application/json'}
     r = requests.post(url=translator_endpoint+'web',
                       headers=h,
@@ -34,27 +34,6 @@ def test_translator():
     return False
 
 # TODO: move argparse to external source
-parser = argparse.ArgumentParser()
-parser.add_argument("-s", "--secret",
-                    type=str,
-                    help="Reddit API client secret.",
-                    default='')
-parser.add_argument("-i", "--id",
-                    type=str,
-                    help="Reddit API client id.",
-                    default='')
-parser.add_argument("-u", "--username",
-                    type=str,
-                    help="Optional reddit username.",
-                    default='')
-parser.add_argument("-p", "--password",
-                    type=str,
-                    help="Optional reddit password.",
-                    default='')
-parser.add_argument("-r", "--subreddit",
-                    type=str,
-                    help="Target subreddit.",
-                    default='all')
 
 args = parser.parse_args()
 
@@ -87,26 +66,19 @@ reddit = praw.Reddit(user_agent=f'python/requests:citereddit:{version} (by /u/br
                     username=args.username,
                     password=args.password,
                     skip_existing=True)
+if not reddit:
+    logger.error('Unable to create praw.Reddit instance.')
+
 # Setup info:
 _info = {
     'Description': __doc__,
-    'Reddit API authenticated as ': reddit.user.me(),
+#    'Reddit API authenticated as ': reddit.user.me(),
     'Scanning subreddit: ': args.subreddit,
     'URLs exported to ': URL_OUT,
     'Library exported to ': BIB_OUT,
     'Logfile located at ': logfile,
     'Scraping started at ': datetime.datetime.now().isoformat()}
 logger.info('Startup Info: \n'+pprint.pformat(_info))
-
-# Cause regex makes everything better
-# Another option would be to convert submissions to html and
-# use html_parser (BS4?) to locate <a> tags
-# Zotero translators have good regexing, so this doesn't have to be perfect
-p1 = """\b((?:[a-z][\w-]+:(?:/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))"""
-p2 = """\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))"""
-p3 = r"""^((http[s]?|ftp):\/)?\/?([^:\/\s]+)((\/\w+)*\/)([\w\-\.]+[^#?\s]+)(.*)?(#[\w\-]+)?$"""
-p4 = r"""\bhttp[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\,]|(?:%[0-9a-fA-F][0-9a-fA-F]))+\b"""
-p = re.compile(p4)
 
 submission_count = 0
 url_count = 0
@@ -122,37 +94,45 @@ with open(URL_OUT, 'w') as url_outfile, open(BIB_OUT, 'w') as bib_outfile:
     # Request bibliographic data from Zotero translation server
     # Add bibtex style reference to output file
 # TODO: still limited to 1000 submissions
-    for submission in reddit.subreddit(args.subreddit).stream.submissions(limit=None):
+    for submission in reddit.subreddit(args.subreddit).stream.submissions():
+        urls = []
+        text = ''
         logger.info(f'Scanning "{submission.title}"')
         submission_count += 1
         # Report the item counts every ten submissions processed
         if submission_count % 10 == 0:
             logger.info(f'Processed so far: Submissions-{submission_count}; Urls- {url_count}; Bib records- {bib_count}')
             logger.debug(f'Authentication limits: {reddit.auth.limits}')
+        # detect url submission
         if submission.selftext_html is None:
-            text = submission.url + '\n'
-# TODO: use submission.selftext_html for easier regexing
+            urls.append(submission.url)
         else:
-            text = submission.selftext
+            text = submission.selftext_html
         submission.comments.replace_more(limit=None)
         for com in submission.comments.list():
-            text += '\n' + com.body
+            text += '\n' + com.body_html
 # TODO: organize line spacing better: remove duplicate '\n'
         logger.debug(f'Submission Full Text: \n"{text}"')
-        for u in re.finditer(p, text):
-            logger.info(f'Found url: <{u.group()}>')
+        soup = BeautifulSoup(text, 'lxml')
+        # Extracting all the <a> tags into a list.
+        tags = soup.find_all('a')
+        # get the urls
+        for tag in tags:
+            urls.append(tag.get('href'))
+        for u in urls:
+            logger.info(f'Found url: <{u}>')
             url_count += 1
             # Add to url file for possible later duplicate checking
-            url_outfile.write('\n' + u.group())
+            url_outfile.write('\n' + u)
             # skip common links
 # TODO: this could skip legitimate links with 'amazon' in the title: regex for domains only?
             common = ['amazon','wikipedia','ebay', 'github',
                       'google', 'reddit', 'longecity', 'youtube']
-            if any([c in u.group() for c in common]): # any can be slow: TODO?
+            if any([c in u for c in common]): # any can be slow: TODO?
                 logger.info('Common url... skipping.')
                 continue
             # Translate url to Zotero API format
-            j = json.dumps({'url': u.group(), 'sessionid': sess})
+            j = json.dumps({'url': u, 'session': sess})
             h = {'Content-Type': 'application/json'}
             r = requests.post(url=translator_endpoint+'web',
                               headers=h,
@@ -161,7 +141,7 @@ with open(URL_OUT, 'w') as url_outfile, open(BIB_OUT, 'w') as bib_outfile:
             # even though url is valid reference. A second call sometimes works.
             # seems to only occur with wiley items: could be broken translator
             if r.text == '[]':
-                logger.warning(f'Unknown web translator error processing url: {u.group()}. Trying once more.')
+                logger.warning(f'Unknown web translator error processing url: {u}. Trying once more.')
                 r = requests.post(url=translator_endpoint+'web',
                                   headers=h,
                                   data=j)
